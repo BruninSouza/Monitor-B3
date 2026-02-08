@@ -102,6 +102,10 @@ def pegar_benchmark(tickers_usuario):
     df = yf.download(lista_download, period="1y", progress=False)['Close']
     return df
 
+@st.cache_data
+def converter_para_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
+
 # --- SIDEBAR ---
 with st.expander("⚙️ Seleção de Ativos e Filtros", expanded=True):
     col_filtros1, col_filtros2 = st.columns([3, 1])
@@ -159,6 +163,14 @@ else:
         fig_bar.update_layout(title="Performance Intradiária", height=350)
         st.plotly_chart(fig_bar, use_container_width=True)
         st.dataframe(df_atual.sort_values("Var (%)", ascending=False), use_container_width=True)
+
+        csv = converter_para_csv(df_atual)
+        st.download_button(
+            label="📥 Baixar Dados em Excel (CSV)",
+            data=csv,
+            file_name="dados_mercado_b3.csv",
+            mime="text/csv",
+        )
 
     # --- ABA 2: SETORES ---
     with tab2:
