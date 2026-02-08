@@ -5,11 +5,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import time
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Dashboard B3 Pro", layout="wide", page_icon="📈")
 st.title("📈 Dashboard B3: Análise & Monitoramento")
 
-# --- BANCO DE DADOS MESTRE (NOME + SETOR) ---
 DADOS_EMPRESAS = {
     "PETR4.SA": {"nome": "Petrobras PN", "setor": "Petróleo & Gás"},
     "PETR3.SA": {"nome": "Petrobras ON", "setor": "Petróleo & Gás"},
@@ -45,13 +43,10 @@ DADOS_EMPRESAS = {
     "EMBR3.SA": {"nome": "Embraer", "setor": "Indústria"},
 }
 
-# --- FUNÇÕES ---
-
 def pegar_dados_tempo_real(tickers):
     if not tickers:
         return pd.DataFrame()
     
-    # Baixa dados intradiários
     dados = yf.download(tickers, period="1d", interval="15m", group_by='ticker', progress=False)
     lista_final = []
     
@@ -63,8 +58,7 @@ def pegar_dados_tempo_real(tickers):
                 df_ticker = dados[t]
 
             if df_ticker.empty: continue
-
-            # Garante que pegamos o valor escalar (número puro) e não uma Série
+            
             ultimo = float(df_ticker['Close'].iloc[-1].item())
             abertura = float(df_ticker['Open'].iloc[0].item())
             variacao = ((ultimo - abertura) / abertura) * 100
@@ -85,43 +79,45 @@ def pegar_dados_tempo_real(tickers):
 
 @st.cache_data(ttl=600)
 def pegar_historico(ticker, periodo_selecionado):
-    # Baixa os dados
     df = yf.download(ticker, period=periodo_selecionado, progress=False)
     
-    # --- LIMPEZA CRÍTICA DE DADOS ---
-    # Se o yfinance devolver colunas MultiIndex (ex: ('Close', 'PETR4.SA')), achatamos para ('Close')
     if isinstance(df.columns, pd.MultiIndex):
         try:
             df.columns = df.columns.droplevel(1)
         except:
             pass
             
-    # Se ainda assim tivermos problemas, garantimos que pegamos apenas as colunas padrão
     return df
 
-# --- SIDEBAR ---
-st.sidebar.header("⚙️ Filtros")
+with st.expander("⚙️ Configurações e Filtros da Carteira", expanded=True):
+    col_filtros1, col_filtros2 = st.columns([3, 1])
+    
+    with col_filtros1:
+        opcoes_tickers = list(DADOS_EMPRESAS.keys())
+        lista_ativos = st.multiselect(
+            "Selecione os Ativos:",
+            options=opcoes_tickers,
+            default=["PETR4.SA", "VALE3.SA", "ITUB4.SA", "WEGE3.SA", "MGLU3.SA"],
+            format_func=lambda x: f"{DADOS_EMPRESAS[x]['nome']} ({x})"
+        )
+    
+    with col_filtros2:
+        st.write("")
+        if st.button("🔄 Atualizar Dados"):
+            st.rerun()
 
-opcoes_tickers = list(DADOS_EMPRESAS.keys())
-lista_ativos = st.sidebar.multiselect(
-    "Carteira Monitorada:",
-    options=opcoes_tickers,
-    default=["PETR4.SA", "VALE3.SA", "ITUB4.SA", "WEGE3.SA", "MGLU3.SA"],
-    format_func=lambda x: f"{DADOS_EMPRESAS[x]['nome']} ({x})"
-)
+if not lista_ativos:
+    st.warning("⚠️ Selecione pelo menos um ativo acima.")
+    st.stop()
 
-# --- INTERFACE PRINCIPAL ---
-
-# Carrega dados gerais
 df_atual = pegar_dados_tempo_real(lista_ativos)
 
 if df_atual.empty:
     st.warning("Selecione ativos ou aguarde a abertura do mercado.")
 else:
-    # Abas
+
     tab1, tab2, tab3 = st.tabs(["📊 Visão Geral", "📈 Setores", "🔍 Raio-X do Ativo"])
 
-    # --- ABA 1: Visão Geral ---
     with tab1:
         c1, c2, c3 = st.columns(3)
         media = df_atual["Var (%)"].mean()
@@ -149,7 +145,6 @@ else:
         
         st.dataframe(df_atual.sort_values("Var (%)", ascending=False), use_container_width=True)
 
-    # --- ABA 2: Análise Setorial ---
     with tab2:
         col_pizza1, col_pizza2 = st.columns(2)
         with col_pizza1:
@@ -176,7 +171,6 @@ else:
             )
             st.plotly_chart(fig_setor_bar, use_container_width=True, key="grafico_barras_setor")
 
-    # --- ABA 3: Raio-X Individual (BLINDADA) ---
     with tab3:
         col_sel1, col_sel2 = st.columns([1, 3])
         
@@ -193,12 +187,10 @@ else:
                 try:
                     df_hist = pegar_historico(ativo_x, periodo_x)
                     
-                    # Verifica se o DataFrame tem dados e as colunas certas
                     if not df_hist.empty and 'Close' in df_hist.columns:
                         
                         fig_hist = go.Figure()
                         
-                        # Plota o Fechamento
                         fig_hist.add_trace(go.Scatter(
                             x=df_hist.index, 
                             y=df_hist['Close'],
@@ -208,7 +200,6 @@ else:
                             name='Fechamento'
                         ))
                         
-                        # Tenta calcular e plotar a média móvel
                         try:
                             sma = df_hist['Close'].rolling(window=20).mean()
                             fig_hist.add_trace(go.Scatter(
@@ -229,9 +220,7 @@ else:
                         )
                         st.plotly_chart(fig_hist, use_container_width=True, key="grafico_historico_linha")
                         
-                        # Estatísticas (Convertendo para float puro para evitar erros de formatação)
                         try:
-                            # .item() garante que pegamos o valor Python puro, sem metadados do Pandas
                             minimo = float(df_hist['Close'].min())
                             maximo = float(df_hist['Close'].max())
                             atual_hist = float(df_hist['Close'].iloc[-1])
@@ -248,6 +237,5 @@ else:
                 except Exception as e:
                     st.error(f"Erro ao processar dados: {e}")
 
-# Botão de refresh
 if st.button("🔄 Atualizar Dados Agora"):
     st.rerun()
